@@ -1,6 +1,10 @@
+""" This is a spike to look at using dataframes for calculating 
+    the weighted average uptakes and std for cluseter data
+
+    Returns:
+        None: returns none but outputs a new csv file.
+"""
 import numpy as np
-import csv
-import math
 import pandas as pd
 
 
@@ -11,50 +15,38 @@ def calculate_thompson(z, center):
     return thompson
 
 
-# with open("resources/csv/spike_cluster.csv", "r", encoding="utf-8") as f:
-#     csvreader = csv.reader(f, delimiter=",")
-#     next(csvreader, None)
-#     shifts = []
-#     intensities = []
-#     rts = []
-#     for row in csvreader:
-#         shifts.append(calculate_thompson(row[11], row[-1]))
-#         intensities.append(float(row[-2]))
-#         rts.append(float(row[12]))
+def weighted_average_std(cluster_group):
 
+    weights = cluster_group["Inten"]
+    average = np.average(cluster_group["Center_Th"], weights=weights)
+    variance = np.average((cluster_group["Center_Th"] - average) ** 2, weights=weights)
+    std = np.sqrt(variance)
+    count = len(cluster_group)
 
-# # average is sum weighted center (in Th) / total intensity
-# weighted_average = np.average(shifts, weights=intensities)
-# print(weighted_average)
-# wighted_variance = np.average((shifts - weighted_average) ** 2, weights=intensities)
-# print(math.sqrt(wighted_variance))
-# print(shifts - weighted_average)
-# print(shifts)
-
-# print(np.std(shifts))
-# print(np.mean(rts))
-# print(np.std(rts))
+    return pd.Series(
+        {
+            "Center mean": average,
+            "Center std": std,
+            "Count": int(count),
+        }
+    )
 
 df = pd.read_csv("resources/csv/cluster.csv")
 df["z"] = pd.to_numeric(df["z"])
 df["Inten"] = pd.to_numeric(df["Inten"])
 df["Center"] = pd.to_numeric(df["Center"])
 
+df["Center_Th"] = calculate_thompson(df["z"], df["Center"])
+
 grouped = df.groupby(["Sequence", "State", "Exposure"])
-weighted = grouped.apply(
-    lambda s: pd.Series(
-        (
-            {
-                "weighted_average": np.average(
-                    calculate_thompson(s["z"], s["Center"]),
-                    weights=s["Inten"],
-                )
-            }
-        )
-    )
-)
-print(weighted)
 
+weighted = grouped.apply(weighted_average_std).reset_index()
 
-# for name, group in grouped:
-#     print(name)
+additional_columns = df[
+    ["Sequence", "State", "Exposure", "Start", "End", "Protein"]
+].drop_duplicates()
+
+result = pd.merge(weighted, additional_columns, on=["Sequence", "State", "Exposure"])
+result = result.convert_dtypes()
+
+# result.to_csv("resources/csv/pandas_state.csv", index=False)
