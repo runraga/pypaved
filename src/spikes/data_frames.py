@@ -1,15 +1,8 @@
-""" This is a spike to look at using dataframes for calculating 
-    the weighted average uptakes and std for cluseter data
-
-    Returns:
-        None: returns none but outputs a new csv file.
-"""
-
 import numpy as np
 import pandas as pd
 from scipy.stats import f
-from statsmodels.stats.libqsturng import psturng
 import math
+from statsmodels.stats.libqsturng import psturng
 
 
 def calculate_thompson(z, center):
