@@ -11,3 +11,6 @@ This is a Python-based version of the PAVED app for processing HDX-MS data. See 
 ### Overview
 
 ### Future Features
+
+- Bootstrapping to check ANOVA and Tukey assumptions
+- Kruskal-Wallis test for cases of small sample observation, n
