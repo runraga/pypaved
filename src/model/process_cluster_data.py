@@ -7,47 +7,99 @@ from statsmodels.stats.libqsturng import psturng
 
 class Model:
     def __init__(self, path):
+        # read in csv data to dataframe
         self.data = pd.read_csv(path)
-        self.data["Center_Th"], self.data["Uptake"] = self.__calculate_uptake(
-            self.data["z"], self.data["Center"], mhp=self.data["MHP"]
+        # calculated m/z of single charge
+        self.data["Center MH+"] = self.__calculate_mh1plus(
+            self.data["z"], self.data["Center"]
         )
-        self.protein_groups = (
-            self.data.groupby("Protein")
-            .apply(self.__process_protein_to_position, include_groups=False)
-            .reset_index(drop=True)
+        # calculate mean and varaince for MH+ of all replicate measruements
+        self.summary_data = (
+            self.data.groupby(
+                [
+                    "Protein",
+                    "Sequence",
+                    "Start",
+                    "End",
+                    "Exposure",
+                    "State",
+                    "MaxUptake",
+                    "MHP",
+                ]
+            )
+            .apply(self.__calc_summary_data, include_groups=False)
+            .reset_index()
         )
 
-    def __calculate_uptake(self, z: int, center: float, mhp: float) -> float:
+        # calculate absolute and relative uptakes (zero time point is reference)
+        self.summary_data = (
+            self.summary_data.groupby(
+                ["Protein", "Sequence", "Start", "End", "State", "MHP"]
+            )
+            .apply(self.__calc_fractional_uptakes, include_groups=False)
+            .reset_index()
+        )
+
+        # calculate stats (ANOVA and Tukeyfor each protein position)
+        self.position_data = (
+            self.summary_data.groupby("Protein")
+            .apply(self.__process_protein_to_position, include_groups=False)
+            .reset_index()
+        )
+        # print(self.position_data[["Exposure", "State", "Position"]].head(30))
+
+    def __calculate_mh1plus(self, z: int, center: float) -> float:
         f_center = center
         i_charge = z
         thompson = f_center * i_charge - ((z - 1) * 1.0078)
-        uptake = thompson - mhp ## uptake is calculated versus the zero time point not the MHP
-        return thompson, uptake
+        return thompson
 
     def __calc_summary_data(self, group: pd.DataFrame) -> pd.Series:
         weights = group["Inten"]
         count = len(group)
 
-        average = np.average(group["Center_Th"], weights=weights)
-        variance = np.average((group["Center_Th"] - average) ** 2, weights=weights)
-        std = np.sqrt(variance)
-
-        average_uptake = np.average(group["Uptake"], weights=weights)
-        frac_uptake = average_uptake / group["MaxUptake"]
-        frac_var = variance / group["MaxUptake"] ** 2
-        frac_std = math.sqrt(frac_var)
+        average = np.average(group["Center MH+"], weights=weights)
+        variance = np.average((group["Center MH+"] - average) ** 2, weights=weights)
 
         return pd.Series(
             {
-                "Center mean": average,
-                "Center variance": variance,
-                "Center std": std,
-                "Uptake mean": average_uptake,
-                "Fractional uptake": frac_uptake,
-                "Fractional variance": frac_var,
+                "Center Mean": average,
+                "Center Variance": variance,
                 "Count": int(count),
             }
         )
+
+    def __calc_fractional_uptakes(self, group: pd.DataFrame) -> pd.DataFrame:
+        reference_uptake = group.loc[group["Exposure"] == 0].iloc[0]["Center Mean"]
+        reference_variance = group.loc[group["Exposure"] == 0].iloc[0][
+            "Center Variance"
+        ]
+
+        uptake = group[
+            [
+                "Exposure",
+                "MaxUptake",
+                "Center Mean",
+                "Center Variance",
+                "Count",
+            ]
+        ]
+        uptake["Abs. Uptake Mean"] = group.apply(
+            lambda x: x["Center Mean"] - reference_uptake, axis=1
+        )
+        uptake["Abs. Uptake Variance"] = group.apply(
+            lambda x: x["Center Variance"] + reference_variance, axis=1
+        )
+        max_uptake = group.iloc[0]["MaxUptake"]
+        uptake["Rel. Uptake Mean"] = uptake.apply(
+            lambda x: x["Abs. Uptake Mean"] / max_uptake, axis=1
+        )
+        uptake["Rel. Uptake Variance"] = uptake.apply(
+            lambda x: x["Abs. Uptake Variance"] / (max_uptake**2), axis=1
+        )
+
+        uptake = uptake.set_index("Exposure")
+        return uptake
 
     def __process_protein_to_position(self, protein_group):
         max_position = protein_group["End"].max()
@@ -55,16 +107,20 @@ class Model:
         position_data = []
         for i in range(1, max_position + 1):
             position_measurments = protein_group[
-                (protein_group["Start"] <= i) & (protein_group["End"] >= i)
+                (protein_group["Start"] < i)
+                & (
+                    protein_group["End"] >= i
+                )  # ['Start'] < i (rather than <=) to remove N-term due to back exchange
             ]
+            # at this point we have all states and exposures for all peptides covering this position
             if position_measurments.shape[0] > 0:
                 anovas = (
+                    # pass each exposure for calculating ANOVA between states
                     position_measurments.groupby("Exposure")
                     .apply(self.__calc_anova, include_groups=False)
                     .reset_index()
                 )
                 anovas["Position"] = i
-
                 tukey_groups = (
                     anovas.groupby("Exposure")
                     .apply(self.__calc_tukey, include_groups=False)
@@ -73,27 +129,67 @@ class Model:
                 stats = pd.merge(anovas, tukey_groups, on=["Exposure", "State"])
                 position_data.append(stats)
         processed_data = pd.concat(position_data).drop(columns=["ms_within"])
-        processed_data["Protein"] = protein_group.name
+
         return processed_data
 
-    def __calc_anova(self, exposure_group):
-        print(exposure_group.columns)
-        means = exposure_group.groupby(["State"]).apply(
-            self.__calc_summary_data, include_groups=False
-        )
-        means["var"] = means["Center std"] ** 2
+    def __combine_means_variance_count(self, position_data_per_state):
+        # receives a dataframe  with all the peptides for that state
 
-        # does denominator need to multiply n-1 here?:
-        grand_mean = (means["Center mean"] * means["Count"]).sum() / means[
-            "Count"
+        # calculate combined mean
+        combined_mean = (
+            position_data_per_state["Count"]
+            * position_data_per_state["Rel. Uptake Mean"]
+        ).sum() / position_data_per_state["Count"].sum()
+        # calculate combined variance
+        combined_within = (
+            (position_data_per_state["Count"] - 1)
+            * position_data_per_state["Rel. Uptake Variance"]
+        ).sum()
+        combined_between = (
+            position_data_per_state["Count"]
+            * (position_data_per_state["Rel. Uptake Mean"] - combined_mean) ** 2
+        ).sum()
+        denominator = (position_data_per_state["Count"] - 1).sum() + 1
+        combined_variance = (combined_within + combined_between) / denominator
+        # calulate combined count
+        combined_count = position_data_per_state["Count"].sum()
+        # return df with combined mean, combined variance and count
+
+        return pd.Series(
+            {
+                "Combined Mean": combined_mean,
+                "Combined Variance": combined_variance,
+                "Combined Count": combined_count,
+            }
+        )
+
+    def __calc_anova(self, exposure_group):
+        # here exposure group contains sequence, start, end, state, MHP, MaxUptake, Center Mean, Center Variance, Count ...
+        # need to return state from original exposure_group df
+        means = (
+            exposure_group.groupby(["State"])
+            .apply(
+                # change this to __combine_means_variance_count
+                self.__combine_means_variance_count,
+                include_groups=False,
+            )
+            .reset_index()
+        )
+
+        # here means contains state, combined variance, combined mean and combined count
+
+        grand_mean = (means["Combined Mean"] * means["Combined Count"]).sum() / means[
+            "Combined Count"
         ].sum()
 
-        ss_between = (means["Count"] * ((means["Center mean"] - grand_mean) ** 2)).sum()
+        ss_between = (
+            means["Combined Count"] * ((means["Combined Mean"] - grand_mean) ** 2)
+        ).sum()
         df_between = means.shape[0] - 1
         ms_between = ss_between / df_between if df_between != 0 else 0
 
-        ss_within = (means["Count"] * means["var"]).sum()
-        df_within = means["Count"].sum() - means.shape[0]
+        ss_within = ((means["Combined Count"] - 1) * means["Combined Variance"]).sum()
+        df_within = means["Combined Count"].sum() - means.shape[0]
         ms_within = ss_within / df_within if df_within != 0 else 0
 
         f_stat = ms_between / ms_within if ms_within != 0 else 0
@@ -103,7 +199,7 @@ class Model:
         means["ANOVA"] = p_value
 
         means["ms_within"] = ms_within
-
+        means = means.set_index("State")
         return means
 
     def __calc_tukey(self, group):
@@ -118,17 +214,20 @@ class Model:
         if anova_p < p_threshold:
             ms_within = group.iloc[0]["ms_within"]
             k = len(group.index)
-            n = group["Count"].sum()
+            n = group["Combined Count"].sum()
 
             for outer_index, outer_row in group.iterrows():
                 for inner_index, inner_row in group.iterrows():
                     if outer_index != inner_index:
                         se = math.sqrt(
                             (ms_within / 2)
-                            * (1 / outer_row["Count"] + 1 / inner_row["Count"])
+                            * (
+                                1 / outer_row["Combined Count"]
+                                + 1 / inner_row["Combined Count"]
+                            )
                         )
                         mean_diff = abs(
-                            outer_row["Center mean"] - inner_row["Center mean"]
+                            outer_row["Combined Mean"] - inner_row["Combined Mean"]
                         )
                         q = mean_diff / se if se != 0 else 0
 
@@ -145,31 +244,42 @@ class Model:
         return tukeys
 
     def get_absolute_uptake_data(self, protein, exposure, state=None):
-        filtered = self.protein_groups.loc[
-            (self.protein_groups["Exposure"] == exposure)
-            & (self.protein_groups["Protein"] == protein)
+        filtered = self.position_data.loc[
+            (self.position_data["Exposure"] == exposure)
+            & (self.position_data["Protein"] == protein)
         ]
         if state:
             # calc y-values
             y_values = pd.Series(
                 filtered.apply(
-                    lambda x: x["Center mean"]
+                    lambda x: x["Combined Mean"]
                     - filtered.loc[
                         (filtered["Position"] == x["Position"])
                         & (filtered["State"] == state)
-                    ].iloc[0]["Center mean"],
+                    ].iloc[0]["Combined Mean"],
                     axis=1,
                 ),
-                name="Center mean",
+                name="Combined Mean",
+            )
+            # is it significant? get the passed state column
+            significance = pd.Series(
+                filtered.apply(lambda x: x[state], axis=1), name="p_value"
+            )
+
+            return (
+                filtered[["Position", "State", "Combined Variance"]]
+                .join(y_values)
+                .join(significance)
             )
         else:
-            y_values = pd.Series(filtered["Center mean"], name="Center mean")
-        return filtered[["Position", "State", "Center std"]].join(y_values)
+            return filtered[["Position", "State", "Combined Variance", "Combined Mean"]]
 
-    def write_to_csv(self, path):
-        self.protein_groups.to_csv(path)
+        return filtered[["Position", "State", "Combined Variance"]].join(y_values)
+
+    # def write_to_csv(self, path):
+    #     self.protein_groups.to_csv(path)
 
 
 if __name__ == "__main__":
     model = Model("resources/csv/cluster.csv")
-    model.write_to_csv("resources/csv/model_data_out.csv")
+    model.get_absolute_uptake_data("astex", 0.5)
