@@ -3,3 +3,5 @@ __pycache__
 __init__.py
 .pytest_cache
 .coverage
+.python-version
+deactivate_venv.sh

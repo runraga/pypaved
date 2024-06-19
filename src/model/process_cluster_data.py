@@ -4,15 +4,24 @@ import numpy as np
 from scipy.stats import f
 from statsmodels.stats.libqsturng import psturng
 
+# import src.controller.Controller
+
 
 class Model:
-    def __init__(self, path):
+    def __init__(self, path, controller):
         # read in csv data to dataframe
         self.data = pd.read_csv(path)
+        self.controller = controller
         # calculated m/z of single charge
+        self.summary_data = None
+        self.position_data = None
+
+    def start_process(self):
+        self.controller.update_progress("Processing measurements:", "Calculating MH+")
         self.data["Center MH+"] = self.__calculate_mh1plus(
             self.data["z"], self.data["Center"]
         )
+        self.data["Exposure"] = self.data["Exposure"].round(2)
         # calculate mean and varaince for MH+ of all replicate measruements
         self.summary_data = (
             self.data.groupby(
@@ -46,7 +55,6 @@ class Model:
             .apply(self.__process_protein_to_position, include_groups=False)
             .reset_index()
         )
-        # print(self.position_data[["Exposure", "State", "Position"]].head(30))
 
     def __calculate_mh1plus(self, z: int, center: float) -> float:
         f_center = center
@@ -55,6 +63,10 @@ class Model:
         return thompson
 
     def __calc_summary_data(self, group: pd.DataFrame) -> pd.Series:
+        self.controller.update_progress(
+            "Processing measurements:", "Summarising replicates"
+        )
+
         weights = group["Inten"]
         count = len(group)
 
@@ -70,6 +82,10 @@ class Model:
         )
 
     def __calc_fractional_uptakes(self, group: pd.DataFrame) -> pd.DataFrame:
+        self.controller.update_progress(
+            "Processing measurements:", "Calculating fractional uptakes"
+        )
+
         reference_uptake = group.loc[group["Exposure"] == 0].iloc[0]["Center Mean"]
         reference_variance = group.loc[group["Exposure"] == 0].iloc[0][
             "Center Variance"
@@ -103,9 +119,15 @@ class Model:
 
     def __process_protein_to_position(self, protein_group):
         max_position = protein_group["End"].max()
+        self.controller.update_progress(protein_group.name, f"0/{max_position}")
 
         position_data = []
         for i in range(1, max_position + 1):
+            if i % 10 == 0:
+                self.controller.update_progress(
+                    protein_group.name, f"{i}/{max_position}"
+                )
+
             position_measurments = protein_group[
                 (protein_group["Start"] < i)
                 & (
@@ -276,10 +298,14 @@ class Model:
 
         return filtered[["Position", "State", "Combined Variance"]].join(y_values)
 
-    # def write_to_csv(self, path):
-    #     self.protein_groups.to_csv(path)
+    def get_states_protein_exposure_lists(self):
+        return (
+            self.position_data["State"].unique().tolist(),
+            self.position_data["Exposure"].unique().tolist(),
+            self.position_data["Protein"].unique().tolist(),
+        )
 
 
-if __name__ == "__main__":
-    model = Model("resources/csv/cluster.csv")
-    model.get_absolute_uptake_data("astex", 0.5)
+# if __name__ == "__main__":
+#     model = Model("resources/csv/cluster.csv")
+#     model.get_absolute_uptake_data("astex", 0.5)

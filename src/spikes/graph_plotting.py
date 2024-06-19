@@ -2,6 +2,7 @@ import math
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.lines as Line2D
 from src.model.process_cluster_data import Model
 
 
@@ -57,27 +58,9 @@ if __name__ == "__main__":
     model = Model("resources/csv/cluster.csv")
     data = model.get_absolute_uptake_data("astex", 0.5, state="danoprevir")
     data.groupby("State").apply(plot_exposures, include_groups=False)
+    plt.scatter(
+        [], [], color="black", label="Significant difference to control", marker="."
+    )
     plt.legend(loc=3, bbox_to_anchor=(1, 0))
     plt.show()
-    # data = data.loc[
-    #     (data["State"] == 0) & (data["State"] == "protein only")
-    # ].reset_index(drop=True)
-    # exposure_groups = data.groupby("State")
-    # print(exposure_groups)
-    # exposure_groups.apply(plot_exposures, fig, ax, include_groups=True)
-    # make data
-    # x = data["x"]
-    # y1 = data["y"] + data["std"]
-    # y2 = data["y"] - data["std"]
-    # y1b = data["yb"] + data["stdb"]
-    # y2b = data["yb"] - data["stdb"]
 
-    # # plot
-    # fig, ax = plt.subplots()
-
-    # ax.fill_between(x, y1, y2, alpha=0.5, linewidth=0)
-    # ax.plot(x, data["y"], linewidth=2, label="a")
-    # ax.fill_between(x, y1b, y2b, alpha=0.5, linewidth=0)
-    # ax.plot(x, data["yb"], linewidth=2, label="b")
-
-    # # ax.set(xlim=(0, 8), xticks=np.arange(1, 8), ylim=(0, 8), yticks=np.arange(1, 8))
