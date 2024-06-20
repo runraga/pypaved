@@ -7,7 +7,7 @@ class ProgressWindow:
         self.rows = RowManager()
         self.progress_window = ctk.CTkToplevel()
         self.progress_window.title("Data progressing progress")
-        self.progress_window.geometry("300x100x0x0")
+        self.progress_window.geometry("500x150x0x0")
 
         self.label_frame = ctk.CTkFrame(self.progress_window)
         self.label_frame.pack(fill="both", expand=True)
@@ -30,7 +30,7 @@ class ProgressWindow:
         self.progress_window.update_idletasks()
         frame_height = self.label_frame.winfo_height()
         self.progress_window.geometry(
-            f"{self.progress_window.winfo_width()}x{frame_height + 50}"
+            f"{self.progress_window.winfo_width()}x{frame_height}"
         )
 
         return label_text

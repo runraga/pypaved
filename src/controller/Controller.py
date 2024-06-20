@@ -14,22 +14,18 @@ class Controller:
     # new model and process data from provided path
     def check_thread(self):
         if self.thread.is_alive():
-            # Schedule the check_thread to be called again after 100ms
             self.view.app.after(100, self.check_thread)
         else:
-            # When the thread finishes, close the progress window
             self.view.close_progress_window()
             self.retrieve_data()
-            
+
     def retrieve_data(self):
-        print("setting up model")
         states, exposures, proteins = self.model.get_states_protein_exposure_lists()
         self.view.new_model(states, exposures, proteins)
 
         data = self.__get_data_from_model()
 
         self.view.create_plot_window(data)
-
 
     def process_cluster(self, sim_path=""):
         if sim_path:
@@ -47,7 +43,7 @@ class Controller:
             self.thread.start()
             self.check_thread()
             # close progress window
-            
+
         else:
             self.view.file_path_error()
             self.app.after(100, lambda: self.view.path_text.focus_set())
@@ -58,17 +54,23 @@ class Controller:
         # call progress window with updates
 
     def __get_data_from_model(self):
+
         if self.view.reference_checkbox.get():
-            return self.model.get_absolute_uptake_data(
+            dataset = self.model.get_dataset(
                 self.view.get_selected_protein(),
                 self.view.get_selected_exposure(),
                 self.view.get_selected_state(),
             )
+            self.view.set_chart_min_max(dataset['min_max'])
+            return dataset["data"]
         else:
-            return self.model.get_absolute_uptake_data(
+            dataset = self.model.get_dataset(
                 self.view.get_selected_protein(),
                 self.view.get_selected_exposure(),
             )
+            self.view.set_chart_min_max(dataset['min_max'])
+
+            return dataset["data"]
 
     def decrease_exposure(self):
         self.view.decrease_exposure()

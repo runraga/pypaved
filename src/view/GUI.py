@@ -252,3 +252,7 @@ class GUI:
     def close_progress_window(self):
         self.progress_window.close_progress_window()
         self.progress_window = None
+
+    def set_chart_min_max(self, min_max):
+        if self.chart != None:
+            self.chart.set_min_max(min_max)

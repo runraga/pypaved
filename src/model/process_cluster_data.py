@@ -15,6 +15,7 @@ class Model:
         # calculated m/z of single charge
         self.summary_data = None
         self.position_data = None
+        self.paved_datasets = {}
 
     def start_process(self):
         self.controller.update_progress("Processing measurements:", "Calculating MH+")
@@ -55,6 +56,51 @@ class Model:
             .apply(self.__process_protein_to_position, include_groups=False)
             .reset_index()
         )
+        # make datasets one for each protein
+        # protein -> (non-)reference -> exposure -> data, min & max
+        # one non-reference
+        unique_proteins = self.position_data["Protein"].unique().tolist()
+        unique_exposures = self.position_data["Exposure"].unique().tolist()
+        unique_states = self.position_data["State"].unique().tolist()
+        # one for each state as reference
+
+        for protein in unique_proteins:
+            self.paved_datasets[protein] = {}
+            for exposure in unique_exposures:
+                self.paved_datasets[protein][exposure] = {"no_ref": {}}
+                no_ref_data = self.get_absolute_uptake_data(protein, exposure)
+                self.paved_datasets[protein][exposure]["no_ref"]["data"] = no_ref_data
+                y_max = (
+                    self.position_data["Combined Mean"]
+                    + self.position_data["Combined Variance"]
+                ).max()
+                y_min = (
+                    self.position_data["Combined Mean"]
+                    + self.position_data["Combined Variance"]
+                ).min()
+                self.paved_datasets[protein][exposure]["no_ref"]["min_max"] = (
+                    y_min,
+                    y_max,
+                )
+                ref_min = 0
+                ref_max = 0
+                for state in unique_states:
+                    self.paved_datasets[protein][exposure][state] = {}
+                    state_data = self.get_absolute_uptake_data(
+                        protein, exposure, state=state
+                    )
+                    self.paved_datasets[protein][exposure][state]["data"] = state_data
+                    y_max = (
+                        state_data["Combined Mean"] + state_data["Combined Variance"]
+                    ).max()
+                    y_min = (
+                        state_data["Combined Mean"] + state_data["Combined Variance"]
+                    ).min()
+                    if y_max > ref_max:
+                        ref_max = y_max
+                    if y_min < ref_min:
+                        ref_min = y_min
+                self.paved_datasets[protein]["ref_min_max"] = (ref_min, ref_max)
 
     def __calculate_mh1plus(self, z: int, center: float) -> float:
         f_center = center
@@ -296,8 +342,6 @@ class Model:
         else:
             return filtered[["Position", "State", "Combined Variance", "Combined Mean"]]
 
-        return filtered[["Position", "State", "Combined Variance"]].join(y_values)
-
     def get_states_protein_exposure_lists(self):
         return (
             self.position_data["State"].unique().tolist(),
@@ -305,7 +349,10 @@ class Model:
             self.position_data["Protein"].unique().tolist(),
         )
 
-
-# if __name__ == "__main__":
-#     model = Model("resources/csv/cluster.csv")
-#     model.get_absolute_uptake_data("astex", 0.5)
+    def get_dataset(self, protein, exposure, state="no_ref"):
+        if state == "no_ref":
+            return self.paved_datasets[protein][exposure][state]
+        else:
+            data = self.paved_datasets[protein][exposure][state]
+            data["min_max"] = self.paved_datasets[protein]["ref_min_max"]
+            return data

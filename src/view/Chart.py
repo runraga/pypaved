@@ -19,6 +19,8 @@ class ChartWindow:
 
         self.data = None
         self.fig, self.ax = plt.subplots()
+        self.chart_y_min = None
+        self.chart_y_max = None
         self.update_chart(data)
 
     def calc_position(self):
@@ -96,6 +98,9 @@ class ChartWindow:
                 [], [], color="black", label="Significant difference", marker="."
             )
         self.ax.legend(loc=3, bbox_to_anchor=(1, 0), fontsize="small")
+        if self.chart_y_max != None and self.chart_y_min != None:
+            self.ax.set_ylim((self.chart_y_min - 0.05, self.chart_y_max + 0.05))
+
         self.fig.tight_layout()
 
         plot_frame = ctk.CTkFrame(self.plot_window)
@@ -108,3 +113,7 @@ class ChartWindow:
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.plot_window)
         self.toolbar.update()
         self.toolbar.place(relx=0, rely=0.9, relwidth=1, relheight=0.1)
+
+    def set_min_max(self, min_max):
+        self.chart_y_min, self.chart_y_max = min_max
+        print(self.chart_y_max)
