@@ -34,12 +34,13 @@ class Controller:
             path = self.view.path_text.get()
         if os.path.exists(path) & os.path.isfile(path) & path.endswith(".csv"):
             if sim_path:
-                # instantiate model then start it running in the thread
-                self.model = Model(sim_path, self)
+                self.model = Model(sim_path)
             else:
-                self.model = Model(path, self)
+                self.model = Model(path)
             self.view.new_progress_window()
-            self.thread = threading.Thread(target=self.model.start_process)
+            self.thread = threading.Thread(
+                target=self.model.start_process, args=(self.update_progress,)
+            )
             self.thread.start()
             self.check_thread()
             # close progress window
@@ -61,14 +62,14 @@ class Controller:
                 self.view.get_selected_exposure(),
                 self.view.get_selected_state(),
             )
-            self.view.set_chart_min_max(dataset['min_max'])
+            self.view.set_chart_min_max(dataset["min_max"])
             return dataset["data"]
         else:
             dataset = self.model.get_dataset(
                 self.view.get_selected_protein(),
                 self.view.get_selected_exposure(),
             )
-            self.view.set_chart_min_max(dataset['min_max'])
+            self.view.set_chart_min_max(dataset["min_max"])
 
             return dataset["data"]
 
