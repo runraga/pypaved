@@ -16,22 +16,30 @@ def position_iterable(positions, protein_group):
 def process_protein_to_position(protein_group, progress_callback):
     min_position = protein_group["Start"].min()
     max_position = protein_group["End"].max()
-    progress_callback(
-        f"Processing {protein_group.name}", f"{max_position-min_position} positions"
+    progress_callback.send(
+        (f"Processing {protein_group.name}", f"{max_position-min_position} positions")
     )
     range_values = range(min_position, max_position + 1)
 
     iterable = position_iterable(range_values, protein_group)
 
     with mp.Pool() as pool:
-        results = pool.map(process_positions, iterable)
+        results = pool.map(
+            process_positions,
+            [(iteration, progress_callback) for iteration in iterable],
+        )
+
     combined_df = pd.concat(results, ignore_index=True)
+    
     return combined_df
-    # callback(result_df)
 
 
-def process_positions(iteration):
+def process_positions(args):
+    iteration, progress_callback = args
     i, position_rows = iteration
+
+    # progress_callback.send(("Processing position:", i))
+
     # at this point we have all states and exposures for all peptides covering this position
     if position_rows.shape[0] > 0:
         anovas = (

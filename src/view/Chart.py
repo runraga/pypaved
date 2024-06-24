@@ -65,7 +65,6 @@ class ChartWindow:
             exposure_group["is_significant"] = exposure_group.apply(
                 check_significance, axis=1
             )
-            # print("updated:", exposure_group["is_significant"])
             self.ax.plot(
                 exposure_group["Position"],
                 exposure_group["is_significant"],
@@ -116,4 +115,3 @@ class ChartWindow:
 
     def set_min_max(self, min_max):
         self.chart_y_min, self.chart_y_max = min_max
-        print(self.chart_y_max)

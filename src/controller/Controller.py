@@ -2,6 +2,15 @@ import os
 import threading
 from src.view.GUI import GUI
 from src.model.process_cluster_data import Model
+import multiprocessing as mp
+
+
+def listener(pipe, progress_callback):
+    while True:
+        message = pipe.recv()
+        if message == "DONE":
+            break
+        progress_callback(*message)
 
 
 class Controller:
@@ -33,26 +42,28 @@ class Controller:
         else:
             path = self.view.path_text.get()
         if os.path.exists(path) & os.path.isfile(path) & path.endswith(".csv"):
+            parent_conn, child_conn = mp.Pipe()
             if sim_path:
                 self.model = Model(sim_path)
             else:
                 self.model = Model(path)
+            listener_thread = threading.Thread(
+                target=listener, args=(parent_conn, self.update_progress)
+            )
+            listener_thread.start()
             self.view.new_progress_window()
             self.thread = threading.Thread(
-                target=self.model.start_process, args=(self.update_progress,)
+                target=self.model.start_process, args=(child_conn,)
             )
             self.thread.start()
             self.check_thread()
-            # close progress window
 
         else:
             self.view.file_path_error()
             self.app.after(100, lambda: self.view.path_text.focus_set())
 
     def update_progress(self, process, progress):
-        # progress will be a string
         self.view.update_progress(process, progress)
-        # call progress window with updates
 
     def __get_data_from_model(self):
 

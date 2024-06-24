@@ -11,7 +11,6 @@ class GUI:
         self.exposures = ["No data"]
         self.proteins = ["No data"]
         self.progress_window = None
-
         self.chart = None
 
         self.app = app
@@ -236,7 +235,6 @@ class GUI:
         self.chart.update_chart(data)
 
     def file_path_error(self):
-        # Show some error message
         CTkMessagebox(
             title="Error",
             message="Invalid path. Check file exists and is a csv file.",

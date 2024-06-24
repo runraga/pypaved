@@ -16,13 +16,12 @@ class Model:
         self.paved_datasets = {}
 
     def start_process(self, progress_callback):
-        progress_callback("Processing measurements:", "Calculating MH+")
+        progress_callback.send(("Processing measurements:", "Calculating MH+"))
         self.data["Center MH+"] = self.__calculate_mh1plus(
             self.data["z"], self.data["Center"]
         )
         self.data["Exposure"] = self.data["Exposure"].round(2)
-        # calculate mean and varaince for MH+ of all replicate measruements
-        progress_callback("Processing measurements:", "calculating summary data")
+        progress_callback.send(("Processing measurements:", "calculating summary data"))
 
         self.summary_data = (
             self.data.groupby(
@@ -42,7 +41,9 @@ class Model:
         )
 
         # calculate absolute and relative uptakes (zero time point is reference)
-        progress_callback("Processing measurements:", "calculating fractional update")
+        progress_callback.send(
+            ("Processing measurements", "calculating fractional update")
+        )
 
         self.summary_data = (
             self.summary_data.groupby(
@@ -53,7 +54,7 @@ class Model:
         )
 
         # calculate stats (ANOVA and Tukeyfor each protein position)
-        progress_callback("Position calculations:", "processing proteins")
+        progress_callback.send(("Position calculations", "processing proteins"))
 
         self.position_data = (
             self.summary_data.groupby("Protein")
@@ -64,6 +65,8 @@ class Model:
             )
             .reset_index()
         )
+        progress_callback.send(("Finished processing proteins", "Gathering data..."))
+
         # TODO move following code to make_datasets function
         # make datasets one for each protein
         # protein -> (non-)reference -> exposure -> data, min & max
@@ -72,10 +75,16 @@ class Model:
         unique_exposures = self.position_data["Exposure"].unique().tolist()
         unique_states = self.position_data["State"].unique().tolist()
         # one for each state as reference
-
         for protein in unique_proteins:
+            progress_callback.send(("Getting datasets for sequence", protein))
             self.paved_datasets[protein] = {}
             for exposure in unique_exposures:
+                progress_callback.send(
+                    (
+                        "Getting datasets for sequence",
+                        f"{protein}, exposure {exposure}",
+                    )
+                )
                 self.paved_datasets[protein][exposure] = {"no_ref": {}}
                 no_ref_data = self.get_absolute_uptake_data(protein, exposure)
                 self.paved_datasets[protein][exposure]["no_ref"]["data"] = no_ref_data
@@ -110,6 +119,7 @@ class Model:
                     if y_min < ref_min:
                         ref_min = y_min
                 self.paved_datasets[protein]["ref_min_max"] = (ref_min, ref_max)
+        progress_callback.send("DONE")
 
     def __calculate_mh1plus(self, z: int, center: float) -> float:
         f_center = center
