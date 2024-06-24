@@ -5,3 +5,4 @@ __init__.py
 .coverage
 .python-version
 deactivate_venv.sh
+us_*.csv
