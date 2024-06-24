@@ -80,7 +80,7 @@ class GUI:
         )
         self.rows.increment_row()
 
-        self.choose_protein_label = ctk.CTkLabel(app, text="Choose a seqeunce:")
+        self.choose_protein_label = ctk.CTkLabel(app, text="Choose a sequence:")
         self.choose_protein_label.grid(
             column=0,
             row=self.rows.get_row_number(),
